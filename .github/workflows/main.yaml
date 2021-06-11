@@ -1,0 +1,53 @@
+---
+name: 'Commits to main'
+
+on:
+  push:
+    branches:
+    - main
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  build-docker-image:
+    name: Build/Push Docker Images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        versions:
+          - python: 3.6
+            pyspark: 2.4.2
+            openjdk: 8
+          - python: 3.7
+            pyspark: 2.4.2
+            openjdk: 8
+    steps:
+      - name: Checkout This Repo
+        uses: actions/checkout@v2
+      - name: Build Docker Image
+        id: build-docker-image
+        env:
+          OPENJDK_VERSION: ${{ matrix.versions.openjdk }}
+          PYSPARK_VERSION: ${{ matrix.versions.pyspark }}
+          PYTHON_VERSION: ${{ matrix.versions.python }}
+        run: |
+          PYTHON_TAG=py$(python -c "print('${PYTHON_VERSION}'.replace('.',''))")
+          PYSPARK_TAG=spark$(python -c "print('${PYSPARK_VERSION}'.replace('.',''))")
+          IMAGE_TAG=${PYTHON_TAG}-${PYSPARK_TAG}
+          IMAGE_URI=mklabsio/pyspark:${IMAGE_TAG}
+          docker build \
+            --build-arg OPENJDK_VERSION=${{ matrix.versions.openjdk }} \
+            --build-arg PYTHON_VERSION=${{ matrix.versions.python }} \
+            --build-arg PYSPARK_VERSION=${{ matrix.versions.pyspark }} \
+            -t ${IMAGE_URI} .
+          echo "::set-output name=image-uri::$IMAGE_URI"
+      - name: Push Docker Image
+        env:
+          DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+        run: |
+          docker login \
+            --username joaoferrao \
+            --password ${DOCKER_HUB_ACCESS_TOKEN}
+
+          docker push ${{ steps.build-docker-image.outputs.image-uri }}
